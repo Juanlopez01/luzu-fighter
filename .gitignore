@@ -1,0 +1,4 @@
+node_modules/
+.claude/
+*.mp4
+*.MP3
