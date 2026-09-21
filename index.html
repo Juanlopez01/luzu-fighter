@@ -41,6 +41,21 @@
 </a>
 <script>
 const GW = 1280, GH = 720, GROUND = 560, GRAV = 0.9;
+const SUPA_URL = 'https://xovihfbgfsdmjjujuirg.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhvdmloZmJnZnNkbWpqdWp1aXJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMjc4NzQsImV4cCI6MjEwNTYwMzg3NH0.3gr1nCEMoLn8ui_NTqyYBrbpMbVlKeYX0IpOAIdxfs8';
+let totalMatches = 0;
+
+function fetchMatchCount() {
+  fetch(`${SUPA_URL}/rest/v1/game_stats?select=match_count`, {
+    headers: { 'apikey': SUPA_KEY }
+  }).then(r => r.json()).then(d => { if (d[0]) totalMatches = d[0].match_count; }).catch(() => {});
+}
+function incrementMatches() {
+  fetch(`${SUPA_URL}/rest/v1/rpc/increment_matches`, {
+    method: 'POST', headers: { 'apikey': SUPA_KEY, 'Content-Type': 'application/json' }
+  }).then(r => r.json()).then(n => { if (typeof n === 'number') totalMatches = n; }).catch(() => {});
+}
+fetchMatchCount();
 const WALK_SPD = 5.5, JUMP_V = -17, DASH_SPD = 18;
 const SP_SCALE = 1.7, SP_W = 300 * SP_SCALE, SP_H = 200 * SP_SCALE;
 const BODY_W = 60, TIMER_SEC = 60, WINS_NEEDED = 2;
@@ -973,7 +988,11 @@ function drawTitle() {
   ctx.font='10px "Press Start 2P", monospace'; ctx.fillStyle='#555';
   ctx.fillText('P1: WASD + F/G/H  |  P2: Flechas + J/K/L',GW/2,560);
   ctx.fillText('Doble-tap = dash | Atras = bloquear | Barra super',GW/2,585);
-  ctx.fillText('ENTER para empezar | Doble-click = fullscreen',GW/2,640);
+  ctx.fillText('ENTER para empezar | Doble-click = fullscreen',GW/2,630);
+  if (totalMatches>0) {
+    ctx.font='8px "Press Start 2P", monospace'; ctx.fillStyle='#ff6ec7';
+    ctx.fillText(`${totalMatches.toLocaleString()} PELEAS JUGADAS`,GW/2,660);
+  }
 }
 
 // Character select
@@ -1108,7 +1127,7 @@ function update() {
     case 'roundEnd':
       stateTimer++; updateParticles(); updateFloats(); updateShake();
       if (stateTimer>150) {
-        if (fighters[0].wins>=WINS_NEEDED||fighters[1].wins>=WINS_NEEDED) { gameState='matchEnd'; stateTimer=0; }
+        if (fighters[0].wins>=WINS_NEEDED||fighters[1].wins>=WINS_NEEDED) { gameState='matchEnd'; stateTimer=0; incrementMatches(); }
         else { round++; resetRound(); gameState='intro'; stateTimer=0; }
       }
       break;
@@ -1176,6 +1195,10 @@ function render() {
     ctx.fillText(tag,GW/2,GH/2+65);
     ctx.font='14px "Press Start 2P", monospace';
     if (stateTimer>60) ctx.fillText('ENTER para volver',GW/2,GH/2+110);
+    if (totalMatches>0) {
+      ctx.font='10px "Press Start 2P", monospace'; ctx.fillStyle='#ff6ec7';
+      ctx.fillText(`${totalMatches.toLocaleString()} PELEAS JUGADAS`,GW/2,GH/2+150);
+    }
   }
   ctx.restore();
 }
