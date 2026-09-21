@@ -311,7 +311,7 @@ function updateProjectiles() {
         const atk = p.isSuper ? ATK.superSpecial : ATK.special;
         const blocked = opp.isBlocking();
         if (blocked) {
-          opp.takeHit(Math.floor(atk.dmg*0.15), Math.floor(atk.kb*0.3), p.vx>0?1:-1, true);
+          opp.takeHit(Math.floor(atk.dmg*0.5), Math.floor(atk.kb*0.3), p.vx>0?1:-1, true);
           spawnBlock(opp.x, opp.y);
           sfx('block');
         } else {
@@ -320,7 +320,7 @@ function updateProjectiles() {
           sfx('heavy');
           shake(p.isSuper?12:8, p.isSuper?18:12);
           const me = p.owner===0 ? fighters[0] : fighters[1];
-          me.addCombo(); me.addSuper(p.isSuper?30:20);
+          me.addCombo(); me.addSuper(p.isSuper?40:30);
         }
         projectiles.splice(i,1);
       }
@@ -353,7 +353,7 @@ class Fighter {
     this.dashT=0; this.dashDir=0;
   }
   isBlocking() {
-    if (this.state==='ko'||this.state==='hit'||this.state==='punch'||this.state==='kick'||this.state==='special') return false;
+    if (this.state==='ko'||this.state==='hit'||this.state==='punch'||this.state==='kick'||this.state==='special'||!this.grounded) return false;
     return this._holdingBack;
   }
   addCombo() { this.combo++; this.comboTimer=90; }
@@ -475,13 +475,14 @@ class Fighter {
           if (dist>0 && dist<a.range && dy<120 && opp.state!=='ko') {
             const blocked = opp.isBlocking();
             if (blocked) {
-              opp.takeHit(Math.floor(a.dmg*0.15), Math.floor(a.kb*0.3), this.facing, true);
+              opp.takeHit(Math.floor(a.dmg*0.5), Math.floor(a.kb*0.3), this.facing, true);
               this.hasHit=true; spawnBlock(opp.x,opp.y); sfx('block');
+              this.addSuper(5);
             } else {
               const comboDmg = a.dmg + Math.min(this.combo*2, 10);
               opp.takeHit(comboDmg, a.kb, this.facing, false);
               this.hasHit=true; spawnHit(opp.x,opp.y,8); sfx('hit'); shake(4,5);
-              this.addCombo(); this.addSuper(8);
+              this.addCombo(); this.addSuper(15);
             }
           }
         }
@@ -495,13 +496,14 @@ class Fighter {
           if (dist>0 && dist<a.range && dy<120 && opp.state!=='ko') {
             const blocked = opp.isBlocking();
             if (blocked) {
-              opp.takeHit(Math.floor(a.dmg*0.15), Math.floor(a.kb*0.3), this.facing, true);
+              opp.takeHit(Math.floor(a.dmg*0.5), Math.floor(a.kb*0.3), this.facing, true);
               this.hasHit=true; spawnBlock(opp.x,opp.y); sfx('block');
+              this.addSuper(7);
             } else {
               const comboDmg = a.dmg + Math.min(this.combo*2, 10);
               opp.takeHit(comboDmg, a.kb, this.facing, false);
               this.hasHit=true; spawnHit(opp.x,opp.y,10); sfx('hit'); shake(5,7);
-              this.addCombo(); this.addSuper(12);
+              this.addCombo(); this.addSuper(20);
             }
           }
         }
@@ -517,7 +519,7 @@ class Fighter {
           const txt = isSuper ? 'SUPER '+this.charData.specialText : this.charData.specialText;
           spawnFloat(txt, this.x, this.y-220, isSuper?'#ffd700':this.charData.specialColor, isSuper?18:14);
           if (isSuper) { this.super=0; this._isSuper=false; }
-          else this.addSuper(5);
+          else this.addSuper(15);
         }
         if (this.stateT>=a.total) this.setState('idle');
         break;
@@ -588,7 +590,7 @@ class AI {
     const oppAttacking = opp.state==='punch'||opp.state==='kick'||opp.state==='special';
 
     // Block reaction
-    if (oppAttacking && dist<180 && Math.random()<0.5) {
+    if (oppAttacking && dist<150 && Math.random()<0.25) {
       if (me.x<opp.x) inp.left=true; else inp.right=true;
       this.blockTimer=15;
       return inp;
@@ -1107,7 +1109,9 @@ function update() {
     case 'fighting': {
       roundTimer++;
       if (slowMo>0) { slowMo--; if (slowMo%3!==0) return; }
-      timerAccum++; if (timerAccum>=60) { timerAccum=0; timer=Math.max(0,timer-1); }
+      timerAccum++; if (timerAccum>=60) { timerAccum=0; timer=Math.max(0,timer-1);
+        fighters[0].addSuper(2); fighters[1].addSuper(2);
+      }
       const p1inp=input(P1_MAP);
       const p2inp=gameMode==='cpu'?ai.getInput(fighters[1],fighters[0]):input(P2_MAP);
       fighters[0].update(p1inp,fighters[1]);
