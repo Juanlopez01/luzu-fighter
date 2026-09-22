@@ -1,4 +1,5 @@
 <title>Luzu Fighting</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230a0a12'/><text x='32' y='42' text-anchor='middle' font-family='Arial Black,sans-serif' font-weight='900' font-size='30' fill='%23ffd700'>VS</text></svg>">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
 <style>
   :root { --bg: #0a0a12; }
@@ -920,6 +921,7 @@ function drawTitle(){
 function updateCharSelect(){
   selectDelay++;selectBob++;
   if(selectDelay<15){Object.keys(keys).forEach(k=>keys[k]=false);return}
+  if(keys['Escape']){keys['Escape']=false;gameState='title';titleDelay=0;sfx('pause');return}
   if(!p1Ready){
     if(keys['KeyA']){p1Sel=(p1Sel-1+CHARACTERS.length)%CHARACTERS.length;keys['KeyA']=false;sfx('select')}
     if(keys['KeyD']){p1Sel=(p1Sel+1)%CHARACTERS.length;keys['KeyD']=false;sfx('select')}
@@ -993,7 +995,7 @@ function drawCharSelect(){
   drawStats(p1C,240,'left');
   drawStats(p2C,1040,'right');
   ctx.font='8px "Press Start 2P",monospace';ctx.textAlign='center';ctx.fillStyle='#555';
-  ctx.fillText(gameMode==='cpu'?'A/D elegir - F confirmar':'P1: A/D + F  |  P2: Flechas + J',GW/2,GH-12);
+  ctx.fillText(gameMode==='cpu'?'A/D elegir - F confirmar - ESC volver':'P1: A/D + F  |  P2: Flechas + J  |  ESC volver',GW/2,GH-12);
   if(p1Ready&&p2Ready){ctx.font='20px "Press Start 2P",monospace';ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=15;ctx.fillText('READY!',GW/2,pY-10);ctx.shadowBlur=0}
 }
 
