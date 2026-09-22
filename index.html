@@ -66,7 +66,7 @@ const ATK={
 };
 
 const CHARACTERS=[
-  {id:'nico',  name:'NICO',   fullName:'NICO OCCHIATO',  folder:'sprites/nico',   specialText:'PARA PARA PARA!', specialColor:'#ffd700', speed:1.0, power:1.0, defense:1.0},
+  {id:'nico',  name:'NICO',   fullName:'NICO OCCHIATO',  folder:'sprites/nico',   specialText:'ES AMAZING!', specialColor:'#ffd700', speed:1.0, power:1.0, defense:1.0},
   {id:'flor',  name:'FLOR',   fullName:'FLOR JAZMIN',    folder:'sprites/flor',   specialText:'ENERGIA COSMICA!',specialColor:'#cc66ff', speed:1.15,power:0.85,defense:0.9},
   {id:'angela',name:'ANGELA', fullName:'ANGELA TORRES',  folder:'sprites/angela', specialText:'SENTI LA MUSICA!',specialColor:'#ff69b4', speed:1.1, power:0.95,defense:0.95},
   {id:'marcos',name:'MARCOS', fullName:'MARCOS GILES',   folder:'sprites/marcos', specialText:'GOLAZOOO!',       specialColor:'#ff6600', speed:0.85,power:1.2, defense:1.1},
@@ -963,20 +963,6 @@ function drawCharSelect(){
     ctx.font='8px "Press Start 2P",monospace';ctx.fillStyle=(isP1||isP2)?'#fff':'#888';
     ctx.textAlign='center';ctx.fillText(char.name,sx+slotW/2,slotY+slotH+16);
   }
-  // Character stat bars below grid
-  const selChar=CHARACTERS[p1Sel];
-  const statY=slotY+slotH+30;
-  ctx.font='6px "Press Start 2P",monospace';ctx.textAlign='left';
-  const statLabels=['VEL','POW','DEF'];
-  const statVals=[selChar.speed,selChar.power,selChar.defense];
-  const statColors=['#00ccff','#ff6633','#44cc44'];
-  for(let si=0;si<3;si++){
-    const sy=statY+si*14;
-    ctx.fillStyle='#888';ctx.fillText(statLabels[si],startX,sy);
-    ctx.fillStyle='#222';ctx.fillRect(startX+40,sy-8,80,8);
-    ctx.fillStyle=statColors[si];ctx.fillRect(startX+40,sy-8,80*Math.min(statVals[si]/1.3,1),8);
-  }
-
   const pY=GROUND+10;
   const p1C=CHARACTERS[p1Sel];const p1S=charSprites[p1C.id].raw.idle[0];
   if(p1S){ctx.save();ctx.translate(240,pY+Math.sin(selectBob*0.04)*3);ctx.drawImage(p1S,-SP_W/2,-SP_H,SP_W,SP_H);ctx.restore();ctx.save();ctx.globalAlpha=0.3;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(240,pY+5,45,10,0,0,Math.PI*2);ctx.fill();ctx.restore()}
@@ -988,6 +974,24 @@ function drawCharSelect(){
   if(p2S){ctx.save();ctx.translate(1040,pY+Math.sin(selectBob*0.04+2)*3);ctx.scale(-1,1);ctx.drawImage(p2S,-SP_W/2,-SP_H,SP_W,SP_H);ctx.restore();ctx.save();ctx.globalAlpha=0.3;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(1040,pY+5,45,10,0,0,Math.PI*2);ctx.fill();ctx.restore()}
   ctx.font='14px "Press Start 2P",monospace';ctx.textAlign='center';ctx.fillStyle='#ff6666';ctx.fillText(p2C.fullName,1040,pY+35);
   ctx.font='8px "Press Start 2P",monospace';ctx.fillStyle=p2C.specialColor;ctx.fillText(p2C.specialText,1040,pY+55);
+  // Stat bars next to each character
+  const statLabels=['VEL','POW','DEF'];
+  const statColors=['#00ccff','#ff6633','#44cc44'];
+  const barW=70,barH=7;
+  const drawStats=(char,cx,align)=>{
+    const vals=[char.speed,char.power,char.defense];
+    const bx=align==='left'?cx+80:cx-80-barW;
+    const labelX=align==='left'?cx+75:cx-75;
+    for(let si=0;si<3;si++){
+      const sy=pY-60+si*16;
+      ctx.font='6px "Press Start 2P",monospace';ctx.textAlign=align==='left'?'right':'left';
+      ctx.fillStyle='#888';ctx.fillText(statLabels[si],labelX,sy+5);
+      ctx.fillStyle='#222';ctx.fillRect(bx,sy,barW,barH);
+      ctx.fillStyle=statColors[si];ctx.fillRect(bx,sy,barW*Math.min(vals[si]/1.3,1),barH);
+    }
+  };
+  drawStats(p1C,240,'left');
+  drawStats(p2C,1040,'right');
   ctx.font='8px "Press Start 2P",monospace';ctx.textAlign='center';ctx.fillStyle='#555';
   ctx.fillText(gameMode==='cpu'?'A/D elegir - F confirmar':'P1: A/D + F  |  P2: Flechas + J',GW/2,GH-12);
   if(p1Ready&&p2Ready){ctx.font='20px "Press Start 2P",monospace';ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=15;ctx.fillText('READY!',GW/2,pY-10);ctx.shadowBlur=0}
