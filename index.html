@@ -1,3 +1,4 @@
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Luzu Fighting</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230a0a12'/><text x='32' y='42' text-anchor='middle' font-family='Arial Black,sans-serif' font-weight='900' font-size='30' fill='%23ffd700'>VS</text></svg>">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
@@ -219,6 +220,142 @@ window.addEventListener('keydown',e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
 });
 window.addEventListener('keyup',e=>{keys[e.code]=false;tapTimes[e.code+'_dash']=false});
+
+// Mobile touch controls
+const isMobile='ontouchstart'in window||navigator.maxTouchPoints>0;
+const touch={active:false,dpad:{x:0,y:0},btns:{punch:false,kick:false,special:false},pause:false};
+const DPAD_CX=140,DPAD_CY=540,DPAD_R=70;
+const BTN_R=38;
+const BTN_PUNCH={x:GW-180,y:500},BTN_KICK={x:GW-100,y:540},BTN_SPECIAL={x:GW-140,y:450};
+const BTN_PAUSE={x:GW/2,y:16,w:60,h:28};
+let touchIds={};
+
+function canvasXY(t){
+  const r=cvs.getBoundingClientRect();
+  return{x:(t.clientX-r.left)*(GW/r.width),y:(t.clientY-r.top)*(GH/r.height)};
+}
+function distSq(ax,ay,bx,by){return(ax-bx)**2+(ay-by)**2}
+
+function processTouches(touches){
+  touch.dpad.x=0;touch.dpad.y=0;
+  touch.btns.punch=false;touch.btns.kick=false;touch.btns.special=false;
+  touch.pause=false;
+  for(let i=0;i<touches.length;i++){
+    const p=canvasXY(touches[i]);
+    // D-pad zone (left half)
+    if(p.x<GW/2){
+      const dx=p.x-DPAD_CX,dy=p.y-DPAD_CY;
+      if(dx*dx+dy*dy<(DPAD_R*2)**2){
+        if(Math.abs(dx)>20)touch.dpad.x=dx>0?1:-1;
+        if(Math.abs(dy)>20)touch.dpad.y=dy>0?1:-1;
+      }
+    }
+    // Buttons (right half)
+    if(p.x>GW/2){
+      if(distSq(p.x,p.y,BTN_PUNCH.x,BTN_PUNCH.y)<(BTN_R+10)**2)touch.btns.punch=true;
+      if(distSq(p.x,p.y,BTN_KICK.x,BTN_KICK.y)<(BTN_R+10)**2)touch.btns.kick=true;
+      if(distSq(p.x,p.y,BTN_SPECIAL.x,BTN_SPECIAL.y)<(BTN_R+10)**2)touch.btns.special=true;
+    }
+    // Pause button
+    if(p.x>BTN_PAUSE.x-BTN_PAUSE.w&&p.x<BTN_PAUSE.x+BTN_PAUSE.w&&p.y<BTN_PAUSE.h*2)touch.pause=true;
+  }
+}
+let lastPause=false;
+function applyTouch(){
+  if(!isMobile)return;
+  keys['KeyA']=touch.dpad.x<0;keys['KeyD']=touch.dpad.x>0;
+  keys['KeyW']=touch.dpad.y<0;keys['KeyS']=touch.dpad.y>0;
+  keys['KeyF']=touch.btns.punch;keys['KeyG']=touch.btns.kick;keys['KeyH']=touch.btns.special;
+  if(touch.pause&&!lastPause){
+    if(gameState==='fighting'){paused=!paused;sfx('pause')}
+    else if(gameState==='charSelect'){gameState='title';titleDelay=0;sfx('pause')}
+  }
+  lastPause=touch.pause;
+}
+
+if(isMobile){
+  cvs.addEventListener('touchstart',e=>{
+    e.preventDefault();processTouches(e.touches);
+    if(gameState==='title'||gameState==='matchEnd'){
+      const p=canvasXY(e.touches[0]);
+      if(gameState==='title'){
+        if(p.y<GH/2+10)menuSel=0; else menuSel=1;
+        keys['Enter']=true;setTimeout(()=>{keys['Enter']=false},80);
+      }else{
+        keys['Enter']=true;setTimeout(()=>{keys['Enter']=false},80);
+      }
+    }
+    if(gameState==='charSelect'){
+      const p=canvasXY(e.touches[0]);
+      if(p.y<240){
+        const slotW=140,gap=12,total=CHARACTERS.length*slotW+(CHARACTERS.length-1)*gap;
+        const startX=(GW-total)/2,slotY=70;
+        for(let i=0;i<CHARACTERS.length;i++){
+          const sx=startX+i*(slotW+gap);
+          if(p.x>=sx&&p.x<=sx+slotW&&p.y>=slotY&&p.y<=slotY+150){
+            if(!p1Ready){p1Sel=i;sfx('select')}
+          }
+        }
+      }
+      if(!p1Ready&&p.y>GH-80){p1Ready=true;sfx('confirm')}
+    }
+  },{passive:false});
+  cvs.addEventListener('touchmove',e=>{e.preventDefault();processTouches(e.touches)},{passive:false});
+  cvs.addEventListener('touchend',e=>{e.preventDefault();processTouches(e.touches)},{passive:false});
+  cvs.addEventListener('touchcancel',e=>{e.preventDefault();processTouches(e.touches)},{passive:false});
+}
+
+function drawTouchControls(){
+  if(!isMobile)return;
+  ctx.save();
+  ctx.globalAlpha=0.3;
+  // D-pad
+  ctx.strokeStyle='#fff';ctx.lineWidth=3;
+  ctx.beginPath();ctx.arc(DPAD_CX,DPAD_CY,DPAD_R,0,Math.PI*2);ctx.stroke();
+  ctx.fillStyle='#fff';
+  // Arrows
+  const aw=14,ah=20;
+  // Up
+  ctx.beginPath();ctx.moveTo(DPAD_CX,DPAD_CY-DPAD_R+10);ctx.lineTo(DPAD_CX-aw,DPAD_CY-DPAD_R+10+ah);ctx.lineTo(DPAD_CX+aw,DPAD_CY-DPAD_R+10+ah);ctx.fill();
+  // Down
+  ctx.beginPath();ctx.moveTo(DPAD_CX,DPAD_CY+DPAD_R-10);ctx.lineTo(DPAD_CX-aw,DPAD_CY+DPAD_R-10-ah);ctx.lineTo(DPAD_CX+aw,DPAD_CY+DPAD_R-10-ah);ctx.fill();
+  // Left
+  ctx.beginPath();ctx.moveTo(DPAD_CX-DPAD_R+10,DPAD_CY);ctx.lineTo(DPAD_CX-DPAD_R+10+ah,DPAD_CY-aw);ctx.lineTo(DPAD_CX-DPAD_R+10+ah,DPAD_CY+aw);ctx.fill();
+  // Right
+  ctx.beginPath();ctx.moveTo(DPAD_CX+DPAD_R-10,DPAD_CY);ctx.lineTo(DPAD_CX+DPAD_R-10-ah,DPAD_CY-aw);ctx.lineTo(DPAD_CX+DPAD_R-10-ah,DPAD_CY+aw);ctx.fill();
+
+  // Highlight active directions
+  ctx.globalAlpha=0.5;
+  if(touch.dpad.x<0){ctx.fillStyle='#4488ff';ctx.beginPath();ctx.arc(DPAD_CX-40,DPAD_CY,18,0,Math.PI*2);ctx.fill()}
+  if(touch.dpad.x>0){ctx.fillStyle='#4488ff';ctx.beginPath();ctx.arc(DPAD_CX+40,DPAD_CY,18,0,Math.PI*2);ctx.fill()}
+  if(touch.dpad.y<0){ctx.fillStyle='#4488ff';ctx.beginPath();ctx.arc(DPAD_CX,DPAD_CY-40,18,0,Math.PI*2);ctx.fill()}
+  if(touch.dpad.y>0){ctx.fillStyle='#4488ff';ctx.beginPath();ctx.arc(DPAD_CX,DPAD_CY+40,18,0,Math.PI*2);ctx.fill()}
+
+  // Attack buttons
+  ctx.globalAlpha=touch.btns.punch?0.6:0.3;
+  ctx.fillStyle='#ff4444';ctx.beginPath();ctx.arc(BTN_PUNCH.x,BTN_PUNCH.y,BTN_R,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#ff6666';ctx.lineWidth=2;ctx.stroke();
+  ctx.globalAlpha=touch.btns.kick?0.6:0.3;
+  ctx.fillStyle='#44aaff';ctx.beginPath();ctx.arc(BTN_KICK.x,BTN_KICK.y,BTN_R,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#66ccff';ctx.stroke();
+  ctx.globalAlpha=touch.btns.special?0.6:0.3;
+  ctx.fillStyle='#ffaa00';ctx.beginPath();ctx.arc(BTN_SPECIAL.x,BTN_SPECIAL.y,BTN_R,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#ffcc44';ctx.stroke();
+
+  // Button labels
+  ctx.globalAlpha=0.6;ctx.font='10px "Press Start 2P",monospace';ctx.textAlign='center';ctx.fillStyle='#fff';
+  ctx.fillText('P',BTN_PUNCH.x,BTN_PUNCH.y+4);
+  ctx.fillText('K',BTN_KICK.x,BTN_KICK.y+4);
+  ctx.fillText('SP',BTN_SPECIAL.x,BTN_SPECIAL.y+4);
+
+  // Pause button
+  ctx.globalAlpha=0.35;ctx.fillStyle='#888';
+  ctx.fillRect(BTN_PAUSE.x-BTN_PAUSE.w/2,BTN_PAUSE.y,BTN_PAUSE.w,BTN_PAUSE.h);
+  ctx.font='8px "Press Start 2P",monospace';ctx.fillStyle='#fff';ctx.globalAlpha=0.5;
+  ctx.fillText('||',BTN_PAUSE.x,BTN_PAUSE.y+18);
+
+  ctx.restore();
+}
 
 const P1_MAP={left:'KeyA',right:'KeyD',jump:'KeyW',crouch:'KeyS',punch:'KeyF',kick:'KeyG',special:'KeyH'};
 const P2_MAP={left:'ArrowLeft',right:'ArrowRight',jump:'ArrowUp',crouch:'ArrowDown',punch:'KeyJ',kick:'KeyK',special:'KeyL'};
@@ -911,9 +1048,14 @@ function drawTitle(){
   ctx.font='20px "Press Start 2P",monospace';
   opts.forEach((o,i)=>{const y=420+i*50;ctx.fillStyle=i===menuSel?'#ffd700':'#777';ctx.fillText(i===menuSel?'>> '+o+' <<':o,GW/2,y)});
   ctx.font='10px "Press Start 2P",monospace';ctx.fillStyle='#555';
-  ctx.fillText('P1: WASD + F/G/H  |  P2: Flechas + J/K/L',GW/2,560);
-  ctx.fillText('Doble-tap = dash | Atras = bloquear | Barra super',GW/2,585);
-  ctx.fillText('ENTER para empezar | Doble-click = fullscreen',GW/2,630);
+  if(isMobile){
+    ctx.fillText('Toca para empezar',GW/2,560);
+    ctx.fillText('D-pad + botones en pelea',GW/2,585);
+  }else{
+    ctx.fillText('P1: WASD + F/G/H  |  P2: Flechas + J/K/L',GW/2,560);
+    ctx.fillText('Doble-tap = dash | Atras = bloquear | Barra super',GW/2,585);
+    ctx.fillText('ENTER para empezar | Doble-click = fullscreen',GW/2,630);
+  }
   if(totalMatches>0){ctx.font='8px "Press Start 2P",monospace';ctx.fillStyle='#ff6ec7';ctx.fillText(`${totalMatches.toLocaleString()} PELEAS JUGADAS`,GW/2,660)}
 }
 
@@ -995,12 +1137,21 @@ function drawCharSelect(){
   drawStats(p1C,240,'left');
   drawStats(p2C,1040,'right');
   ctx.font='8px "Press Start 2P",monospace';ctx.textAlign='center';ctx.fillStyle='#555';
-  ctx.fillText(gameMode==='cpu'?'A/D elegir - F confirmar - ESC volver':'P1: A/D + F  |  P2: Flechas + J  |  ESC volver',GW/2,GH-12);
+  if(isMobile)ctx.fillText('Toca un personaje - luego toca abajo para confirmar',GW/2,GH-12);
+  else ctx.fillText(gameMode==='cpu'?'A/D elegir - F confirmar - ESC volver':'P1: A/D + F  |  P2: Flechas + J  |  ESC volver',GW/2,GH-12);
   if(p1Ready&&p2Ready){ctx.font='20px "Press Start 2P",monospace';ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=15;ctx.fillText('READY!',GW/2,pY-10);ctx.shadowBlur=0}
+  if(isMobile&&!p1Ready){
+    ctx.globalAlpha=0.7;ctx.fillStyle='#22cc44';
+    const bw=200,bh=40,bx=GW/2-bw/2,by=GH-60;
+    ctx.fillRect(bx,by,bw,bh);ctx.strokeStyle='#44ff66';ctx.lineWidth=2;ctx.strokeRect(bx,by,bw,bh);
+    ctx.font='12px "Press Start 2P",monospace';ctx.fillStyle='#fff';ctx.textAlign='center';
+    ctx.fillText('CONFIRMAR',GW/2,by+26);ctx.globalAlpha=1;
+  }
 }
 
 // Main update
 function update(){
+  applyTouch();
   switch(gameState){
     case 'loading':if(loaded){gameState='title';titleDelay=0;buildStage()}break;
     case 'title':updateTitle();break;
@@ -1067,7 +1218,7 @@ function render(){
   ctx.save();ctx.translate(shakeX,shakeY);
   const sorted=fighters[0].y<=fighters[1].y?[0,1]:[1,0];
   fighters[sorted[0]].draw();fighters[sorted[1]].draw();
-  drawProjectiles();drawParticles();drawFloats();drawUI();
+  drawProjectiles();drawParticles();drawFloats();drawUI();drawTouchControls();
 
   if(gameState==='intro'){
     const t=stateTimer;ctx.textAlign='center';
