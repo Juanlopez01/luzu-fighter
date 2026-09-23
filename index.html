@@ -2,6 +2,7 @@
 <title>Luzu Fighting</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230a0a12'/><text x='32' y='42' text-anchor='middle' font-family='Arial Black,sans-serif' font-weight='900' font-size='30' fill='%23ffd700'>VS</text></svg>">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root { --bg: #0a0a12; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #050510; } }
@@ -55,6 +56,84 @@ function incrementMatches(){
   .then(r=>r.json()).then(n=>{if(typeof n==='number')totalMatches=n}).catch(()=>{});
 }
 fetchMatchCount();
+
+// Online multiplayer via Supabase Realtime
+const supa=window.supabase.createClient(SUPA_URL,SUPA_KEY);
+let onlineChannel=null,onlineRole=null,roomCode='',remoteInput=null,onlineConnected=false;
+let lobbyInput='',lobbyMsg='',lobbyBob=0;
+
+function genRoomCode(){return Math.random().toString(36).substring(2,6).toUpperCase()}
+
+function cleanupOnline(){
+  if(onlineChannel){supa.removeChannel(onlineChannel);onlineChannel=null}
+  onlineRole=null;remoteInput=null;onlineConnected=false;lobbyMsg='';
+}
+
+function setupChannel(code){
+  roomCode=code;
+  onlineChannel=supa.channel('room-'+code,{config:{broadcast:{self:false}}});
+
+  onlineChannel.on('broadcast',{event:'input'},({payload})=>{
+    remoteInput=payload;
+  });
+  onlineChannel.on('broadcast',{event:'charSelect'},({payload})=>{
+    if(onlineRole==='host'){p2Sel=payload.sel;p2Tab=payload.tab;if(payload.ready)p2Ready=true}
+    else{p1Sel=payload.sel;p1Tab=payload.tab;if(payload.ready)p1Ready=true}
+  });
+  onlineChannel.on('broadcast',{event:'join'},()=>{
+    onlineConnected=true;lobbyMsg='CONECTADO!';
+    sfx('bell');
+    gameState='charSelect';p1Sel=0;p2Sel=0;p1Ready=false;p2Ready=false;selectDelay=0;
+  });
+  onlineChannel.on('broadcast',{event:'start'},({payload})=>{
+    p1Sel=payload.p1Sel;p2Sel=payload.p2Sel;
+    startGame();
+  });
+  onlineChannel.on('broadcast',{event:'rematch'},()=>{
+    startGame();
+  });
+  onlineChannel.on('broadcast',{event:'leave'},()=>{
+    lobbyMsg='OPONENTE DESCONECTADO';onlineConnected=false;
+    sfx('ko');gameState='title';titleDelay=0;cleanupOnline();
+  });
+
+  return onlineChannel.subscribe((status)=>{
+    if(status==='SUBSCRIBED'&&onlineRole==='host'){
+      lobbyMsg='ESPERANDO OPONENTE...';
+    }
+  });
+}
+
+function createRoom(){
+  onlineRole='host';
+  const code=genRoomCode();
+  lobbyMsg='CONECTANDO...';
+  setupChannel(code);
+}
+
+function joinRoom(code){
+  onlineRole='guest';roomCode=code;
+  lobbyMsg='CONECTANDO...';
+  setupChannel(code).then(()=>{
+    onlineChannel.send({type:'broadcast',event:'join',payload:{}});
+    onlineConnected=true;
+    gameState='charSelect';p1Sel=0;p2Sel=0;p1Ready=false;p2Ready=false;selectDelay=0;
+    sfx('bell');
+  });
+}
+
+function sendOnlineInput(inp){
+  if(!onlineChannel||!onlineConnected)return;
+  onlineChannel.send({type:'broadcast',event:'input',payload:inp});
+}
+
+function sendCharSelect(){
+  if(!onlineChannel)return;
+  const sel=onlineRole==='host'?p1Sel:p2Sel;
+  const tab=onlineRole==='host'?p1Tab:p2Tab;
+  const ready=onlineRole==='host'?p1Ready:p2Ready;
+  onlineChannel.send({type:'broadcast',event:'charSelect',payload:{sel,tab,ready}});
+}
 
 const SP_SCALE=1.7, SP_W=300*SP_SCALE, SP_H=200*SP_SCALE;
 const BODY_W=60, TIMER_SEC=60, WINS_NEEDED=2;
@@ -298,7 +377,7 @@ if(isMobile){
     if(gameState==='title'||gameState==='matchEnd'){
       const p=canvasXY(e.touches[0]);
       if(gameState==='title'){
-        if(p.y<GH/2+10)menuSel=0; else menuSel=1;
+        if(p.y<380)menuSel=0;else if(p.y<425)menuSel=1;else menuSel=2;
         keys['Enter']=true;setTimeout(()=>{keys['Enter']=false},80);
       }else{
         keys['Enter']=true;setTimeout(()=>{keys['Enter']=false},80);
@@ -1049,12 +1128,13 @@ let titleDelay=0;
 function updateTitle(){
   titleBob++;titleDelay++;
   if(titleDelay<30){Object.keys(keys).forEach(k=>keys[k]=false);return}
-  if(keys['ArrowUp']||keys['KeyW']){menuSel=0;keys['ArrowUp']=false;keys['KeyW']=false}
-  if(keys['ArrowDown']||keys['KeyS']){menuSel=1;keys['ArrowDown']=false;keys['KeyS']=false}
+  if(keys['ArrowUp']||keys['KeyW']){menuSel=(menuSel-1+3)%3;keys['ArrowUp']=false;keys['KeyW']=false}
+  if(keys['ArrowDown']||keys['KeyS']){menuSel=(menuSel+1)%3;keys['ArrowDown']=false;keys['KeyS']=false}
   if(keys['Enter']||keys['Space']){
-    initAudio();gameMode=menuSel===0?'cpu':'pvp';
-    gameState='charSelect';p1Sel=0;p2Sel=0;p1Ready=false;p2Ready=false;
-    selectDelay=0;sfx('bell');keys['Enter']=false;keys['Space']=false;
+    initAudio();
+    if(menuSel===2){gameMode='online';gameState='lobby';lobbyInput='';lobbyMsg='';lobbyBob=0;sfx('bell')}
+    else{gameMode=menuSel===0?'cpu':'pvp';gameState='charSelect';p1Sel=0;p2Sel=0;p1Ready=false;p2Ready=false;selectDelay=0;sfx('bell')}
+    keys['Enter']=false;keys['Space']=false;
   }
 }
 function drawTitle(){
@@ -1078,9 +1158,9 @@ function drawTitle(){
     ctx.save();ctx.translate(980,GROUND);ctx.scale(-1,1);
     ctx.drawImage(idleF?s2.idle[0]:s2.walk[0],-SP_W/2,-SP_H,SP_W,SP_H);ctx.restore();
   }
-  const opts=['VS  CPU','VS  2P'];
+  const opts=['VS  CPU','VS  2P','VS  ONLINE'];
   ctx.font='20px "Press Start 2P",monospace';
-  opts.forEach((o,i)=>{const y=420+i*50;ctx.fillStyle=i===menuSel?'#ffd700':'#777';ctx.fillText(i===menuSel?'>> '+o+' <<':o,GW/2,y)});
+  opts.forEach((o,i)=>{const y=400+i*45;ctx.fillStyle=i===menuSel?'#ffd700':'#777';ctx.fillText(i===menuSel?'>> '+o+' <<':o,GW/2,y)});
   ctx.font='10px "Press Start 2P",monospace';ctx.fillStyle='#555';
   if(isMobile){
     ctx.fillText('Toca para empezar',GW/2,560);
@@ -1101,28 +1181,54 @@ function localIdx(tab,global){return charsInTab(tab).indexOf(CHARACTERS[global])
 function updateCharSelect(){
   selectDelay++;selectBob++;
   if(selectDelay<15){Object.keys(keys).forEach(k=>keys[k]=false);return}
-  if(keys['Escape']){keys['Escape']=false;gameState='title';titleDelay=0;sfx('pause');return}
-  if(!p1Ready){
-    if(keys['KeyW']){p1Tab=(p1Tab-1+PROGRAMS.length)%PROGRAMS.length;p1Sel=globalIdx(p1Tab,0);keys['KeyW']=false;sfx('select')}
-    if(keys['KeyS']){p1Tab=(p1Tab+1)%PROGRAMS.length;p1Sel=globalIdx(p1Tab,0);keys['KeyS']=false;sfx('select')}
-    const chars=charsInTab(p1Tab),li=localIdx(p1Tab,p1Sel);
-    if(keys['KeyA']){p1Sel=globalIdx(p1Tab,(li-1+chars.length)%chars.length);keys['KeyA']=false;sfx('select')}
-    if(keys['KeyD']){p1Sel=globalIdx(p1Tab,(li+1)%chars.length);keys['KeyD']=false;sfx('select')}
-    if(keys['KeyF']||keys['Enter']){p1Ready=true;keys['KeyF']=false;keys['Enter']=false;sfx('confirm')}
-  }
-  if(gameMode==='cpu'){
-    if(p1Ready&&!p2Ready){p2Sel=Math.floor(Math.random()*CHARACTERS.length);p2Ready=true}
-  }else{
-    if(!p2Ready){
-      if(keys['ArrowUp']){p2Tab=(p2Tab-1+PROGRAMS.length)%PROGRAMS.length;p2Sel=globalIdx(p2Tab,0);keys['ArrowUp']=false;sfx('select')}
-      if(keys['ArrowDown']){p2Tab=(p2Tab+1)%PROGRAMS.length;p2Sel=globalIdx(p2Tab,0);keys['ArrowDown']=false;sfx('select')}
-      const chars=charsInTab(p2Tab),li=localIdx(p2Tab,p2Sel);
-      if(keys['ArrowLeft']){p2Sel=globalIdx(p2Tab,(li-1+chars.length)%chars.length);keys['ArrowLeft']=false;sfx('select')}
-      if(keys['ArrowRight']){p2Sel=globalIdx(p2Tab,(li+1)%chars.length);keys['ArrowRight']=false;sfx('select')}
-      if(keys['KeyJ']||keys['Space']){p2Ready=true;keys['KeyJ']=false;keys['Space']=false;sfx('confirm')}
+  if(keys['Escape']){keys['Escape']=false;if(gameMode==='online'){cleanupOnline()}gameState='title';titleDelay=0;sfx('pause');return}
+  if(gameMode==='online'){
+    const myReady=onlineRole==='host'?p1Ready:p2Ready;
+    if(!myReady){
+      const myTab=onlineRole==='host'?p1Tab:p2Tab;
+      const mySel=onlineRole==='host'?p1Sel:p2Sel;
+      let newTab=myTab,newSel=mySel,changed=false;
+      if(keys['KeyW']||keys['ArrowUp']){newTab=(myTab-1+PROGRAMS.length)%PROGRAMS.length;newSel=globalIdx(newTab,0);changed=true;keys['KeyW']=false;keys['ArrowUp']=false;sfx('select')}
+      if(keys['KeyS']||keys['ArrowDown']){newTab=(myTab+1)%PROGRAMS.length;newSel=globalIdx(newTab,0);changed=true;keys['KeyS']=false;keys['ArrowDown']=false;sfx('select')}
+      if(!changed){
+        const chars=charsInTab(newTab),li=localIdx(newTab,newSel);
+        if(keys['KeyA']||keys['ArrowLeft']){newSel=globalIdx(newTab,(li-1+chars.length)%chars.length);changed=true;keys['KeyA']=false;keys['ArrowLeft']=false;sfx('select')}
+        if(keys['KeyD']||keys['ArrowRight']){newSel=globalIdx(newTab,(li+1)%chars.length);changed=true;keys['KeyD']=false;keys['ArrowRight']=false;sfx('select')}
+      }
+      if(onlineRole==='host'){p1Tab=newTab;p1Sel=newSel}else{p2Tab=newTab;p2Sel=newSel}
+      if(keys['KeyF']||keys['Enter']||keys['Space']){
+        if(onlineRole==='host')p1Ready=true;else p2Ready=true;
+        keys['KeyF']=false;keys['Enter']=false;keys['Space']=false;sfx('confirm');changed=true;
+      }
+      if(changed)sendCharSelect();
     }
+    if(p1Ready&&p2Ready){stateTimer++;if(stateTimer>60){
+      if(onlineRole==='host')onlineChannel.send({type:'broadcast',event:'start',payload:{p1Sel,p2Sel}});
+      startGame();stateTimer=0;
+    }}
+  }else{
+    if(!p1Ready){
+      if(keys['KeyW']){p1Tab=(p1Tab-1+PROGRAMS.length)%PROGRAMS.length;p1Sel=globalIdx(p1Tab,0);keys['KeyW']=false;sfx('select')}
+      if(keys['KeyS']){p1Tab=(p1Tab+1)%PROGRAMS.length;p1Sel=globalIdx(p1Tab,0);keys['KeyS']=false;sfx('select')}
+      const chars=charsInTab(p1Tab),li=localIdx(p1Tab,p1Sel);
+      if(keys['KeyA']){p1Sel=globalIdx(p1Tab,(li-1+chars.length)%chars.length);keys['KeyA']=false;sfx('select')}
+      if(keys['KeyD']){p1Sel=globalIdx(p1Tab,(li+1)%chars.length);keys['KeyD']=false;sfx('select')}
+      if(keys['KeyF']||keys['Enter']){p1Ready=true;keys['KeyF']=false;keys['Enter']=false;sfx('confirm')}
+    }
+    if(gameMode==='cpu'){
+      if(p1Ready&&!p2Ready){p2Sel=Math.floor(Math.random()*CHARACTERS.length);p2Ready=true}
+    }else{
+      if(!p2Ready){
+        if(keys['ArrowUp']){p2Tab=(p2Tab-1+PROGRAMS.length)%PROGRAMS.length;p2Sel=globalIdx(p2Tab,0);keys['ArrowUp']=false;sfx('select')}
+        if(keys['ArrowDown']){p2Tab=(p2Tab+1)%PROGRAMS.length;p2Sel=globalIdx(p2Tab,0);keys['ArrowDown']=false;sfx('select')}
+        const chars=charsInTab(p2Tab),li=localIdx(p2Tab,p2Sel);
+        if(keys['ArrowLeft']){p2Sel=globalIdx(p2Tab,(li-1+chars.length)%chars.length);keys['ArrowLeft']=false;sfx('select')}
+        if(keys['ArrowRight']){p2Sel=globalIdx(p2Tab,(li+1)%chars.length);keys['ArrowRight']=false;sfx('select')}
+        if(keys['KeyJ']||keys['Space']){p2Ready=true;keys['KeyJ']=false;keys['Space']=false;sfx('confirm')}
+      }
+    }
+    if(p1Ready&&p2Ready){stateTimer++;if(stateTimer>(gameMode==='cpu'?30:60)){startGame();stateTimer=0}}
   }
-  if(p1Ready&&p2Ready){stateTimer++;if(stateTimer>(gameMode==='cpu'?30:60)){startGame();stateTimer=0}}
 }
 function drawCharSelect(){
   if(stageCvs)ctx.drawImage(stageCvs,0,0);
@@ -1131,8 +1237,12 @@ function drawCharSelect(){
   ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=15;
   ctx.fillText('ELEGIR PERSONAJE',GW/2,32);ctx.shadowBlur=0;
 
-  // Active tab = whichever player is still choosing
-  const activeTab=!p1Ready?p1Tab:p2Tab;
+  // Active tab = whichever player is still choosing (online: show my own tab)
+  let activeTab;
+  if(gameMode==='online'){
+    const myReady=onlineRole==='host'?p1Ready:p2Ready;
+    activeTab=myReady?(onlineRole==='host'?p2Tab:p1Tab):(onlineRole==='host'?p1Tab:p2Tab);
+  }else{activeTab=!p1Ready?p1Tab:p2Tab}
 
   // Program tabs
   const tabY=48,tabH=24,tabGap=10;
@@ -1214,7 +1324,9 @@ function drawCharSelect(){
 
   ctx.font='7px "Press Start 2P",monospace';ctx.textAlign='center';ctx.fillStyle='#555';
   if(isMobile)ctx.fillText('Toca un personaje - luego toca abajo para confirmar',GW/2,GH-8);
-  else ctx.fillText(gameMode==='cpu'?'W/S programa - A/D elegir - F confirmar - ESC volver':'P1: WASD+F  |  P2: Flechas+J  |  ESC volver',GW/2,GH-8);
+  else if(gameMode==='online'){
+    ctx.fillText('W/S programa - A/D elegir - F confirmar - Sos '+(onlineRole==='host'?'P1':'P2')+' - Sala: '+roomCode,GW/2,GH-8);
+  }else ctx.fillText(gameMode==='cpu'?'W/S programa - A/D elegir - F confirmar - ESC volver':'P1: WASD+F  |  P2: Flechas+J  |  ESC volver',GW/2,GH-8);
   if(p1Ready&&p2Ready){ctx.font='18px "Press Start 2P",monospace';ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=15;ctx.fillText('READY!',GW/2,pY-45);ctx.shadowBlur=0}
   if(isMobile&&!p1Ready){
     ctx.globalAlpha=0.7;ctx.fillStyle='#22cc44';
@@ -1225,12 +1337,84 @@ function drawCharSelect(){
   }
 }
 
+// Online lobby
+let lobbyMode='menu',lobbyDelay=0;
+window.addEventListener('keydown',e=>{
+  if(gameState!=='lobby'||lobbyMode!=='join')return;
+  if(e.key==='Backspace'){lobbyInput=lobbyInput.slice(0,-1);e.preventDefault();return}
+  if(e.key==='Enter'&&lobbyInput.length===4){joinRoom(lobbyInput.toUpperCase());lobbyMode='waiting';return}
+  if(e.key.length===1&&lobbyInput.length<4&&/[a-zA-Z0-9]/.test(e.key)){lobbyInput+=e.key.toUpperCase()}
+},true);
+
+function updateLobby(){
+  lobbyBob++;lobbyDelay++;
+  if(lobbyDelay<15){Object.keys(keys).forEach(k=>keys[k]=false);return}
+  if(keys['Escape']){keys['Escape']=false;cleanupOnline();gameState='title';titleDelay=0;lobbyMode='menu';sfx('pause');return}
+  if(lobbyMode==='menu'){
+    if(keys['KeyA']||keys['ArrowLeft']){lobbyMode='create';lobbyDelay=0;keys['KeyA']=false;keys['ArrowLeft']=false}
+    if(keys['KeyD']||keys['ArrowRight']){lobbyMode='join';lobbyDelay=0;lobbyInput='';keys['KeyD']=false;keys['ArrowRight']=false}
+    if(keys['Enter']||keys['Space']){
+      if(menuSel===0){lobbyMode='create';lobbyDelay=0}
+      else{lobbyMode='join';lobbyInput='';lobbyDelay=0}
+      keys['Enter']=false;keys['Space']=false;
+    }
+    if(keys['ArrowUp']||keys['KeyW']){menuSel=0;keys['ArrowUp']=false;keys['KeyW']=false}
+    if(keys['ArrowDown']||keys['KeyS']){menuSel=1;keys['ArrowDown']=false;keys['KeyS']=false}
+  }
+  if(lobbyMode==='create'&&!onlineChannel){createRoom()}
+}
+
+function drawLobby(){
+  if(stageCvs)ctx.drawImage(stageCvs,0,0);
+  ctx.fillStyle='rgba(0,0,0,0.85)';ctx.fillRect(0,0,GW,GH);
+  ctx.font='24px "Press Start 2P",monospace';ctx.textAlign='center';
+  ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=15;
+  ctx.fillText('VS ONLINE',GW/2,80);ctx.shadowBlur=0;
+
+  if(lobbyMode==='menu'){
+    ctx.font='16px "Press Start 2P",monospace';
+    const opts=['CREAR SALA','UNIRSE'];
+    opts.forEach((o,i)=>{
+      const y=280+i*60;
+      ctx.fillStyle=i===menuSel?'#ffd700':'#777';
+      ctx.fillText(i===menuSel?'>> '+o+' <<':o,GW/2,y);
+    });
+    ctx.font='9px "Press Start 2P",monospace';ctx.fillStyle='#555';
+    ctx.fillText('ESC para volver',GW/2,GH-30);
+  }else if(lobbyMode==='create'||lobbyMode==='waiting'){
+    ctx.font='12px "Press Start 2P",monospace';ctx.fillStyle='#aaa';
+    ctx.fillText('CODIGO DE SALA:',GW/2,240);
+    ctx.font='64px "Press Start 2P",monospace';ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=20;
+    ctx.fillText(roomCode,GW/2,340);ctx.shadowBlur=0;
+    ctx.font='10px "Press Start 2P",monospace';ctx.fillStyle='#66ff88';
+    ctx.fillText('Compartile este codigo a tu oponente',GW/2,400);
+    ctx.font='14px "Press Start 2P",monospace';ctx.fillStyle='#ff6ec7';
+    const dots='.'.repeat(Math.floor(lobbyBob/30)%4);
+    ctx.fillText(lobbyMsg+dots,GW/2,480);
+    ctx.font='9px "Press Start 2P",monospace';ctx.fillStyle='#555';
+    ctx.fillText('ESC para volver',GW/2,GH-30);
+  }else if(lobbyMode==='join'){
+    ctx.font='12px "Press Start 2P",monospace';ctx.fillStyle='#aaa';
+    ctx.fillText('INGRESA EL CODIGO:',GW/2,240);
+    ctx.font='64px "Press Start 2P",monospace';ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=20;
+    const display=lobbyInput+'_'.repeat(4-lobbyInput.length);
+    ctx.fillText(display,GW/2,340);ctx.shadowBlur=0;
+    if(lobbyInput.length===4){
+      ctx.font='10px "Press Start 2P",monospace';ctx.fillStyle='#66ff88';
+      ctx.fillText('ENTER para conectar',GW/2,400);
+    }
+    ctx.font='9px "Press Start 2P",monospace';ctx.fillStyle='#555';
+    ctx.fillText('ESC para volver',GW/2,GH-30);
+  }
+}
+
 // Main update
 function update(){
   applyTouch();
   switch(gameState){
     case 'loading':if(loaded){gameState='title';titleDelay=0;buildStage()}break;
     case 'title':updateTitle();break;
+    case 'lobby':updateLobby();break;
     case 'charSelect':updateCharSelect();break;
     case 'intro':stateTimer++;if(stateTimer>120){gameState='fighting';stateTimer=0}break;
     case 'fighting':{
@@ -1239,8 +1423,16 @@ function update(){
       roundTimer++;
       if(slowMo>0){slowMo--;if(slowMo%3!==0)return}
       timerAccum++;if(timerAccum>=60){timerAccum=0;timer=Math.max(0,timer-1);fighters[0].addSuper(2);fighters[1].addSuper(2)}
-      const p1inp=input(P1_MAP);
-      const p2inp=gameMode==='cpu'?ai.getInput(fighters[1],fighters[0]):input(P2_MAP);
+      let p1inp,p2inp;
+      if(gameMode==='online'){
+        const myInp=input(P1_MAP);
+        sendOnlineInput(myInp);
+        if(onlineRole==='host'){p1inp=myInp;p2inp=remoteInput||{left:false,right:false,jump:false,crouch:false,punch:false,kick:false,special:false,dashL:false,dashR:false}}
+        else{p2inp=myInp;p1inp=remoteInput||{left:false,right:false,jump:false,crouch:false,punch:false,kick:false,special:false,dashL:false,dashR:false}}
+      }else{
+        p1inp=input(P1_MAP);
+        p2inp=gameMode==='cpu'?ai.getInput(fighters[1],fighters[0]):input(P2_MAP);
+      }
       fighters[0].update(p1inp,fighters[1]);
       fighters[1].update(p2inp,fighters[0]);
       updateProjectiles();updateParticles();updateFloats();updateShake();
@@ -1267,8 +1459,10 @@ function update(){
     case 'matchEnd':
       stateTimer++;updateParticles();updateFloats();
       if(stateTimer>60&&keys['KeyR']){
+        if(gameMode==='online'&&onlineChannel)onlineChannel.send({type:'broadcast',event:'rematch',payload:{}});
         startGame();keys['KeyR']=false;
       }else if(stateTimer>60&&(keys['Enter']||keys['Space'])){
+        if(gameMode==='online')cleanupOnline();
         gameState='title';titleDelay=0;keys['Enter']=false;keys['Space']=false;
       }
       break;
@@ -1288,6 +1482,7 @@ function render(){
   }
   if(stageCvs)ctx.drawImage(stageCvs,0,0);
   if(gameState==='title'){drawTitle();return}
+  if(gameState==='lobby'){drawLobby();return}
   if(gameState==='charSelect'){drawCharSelect();return}
 
   drawNeonPulse();
@@ -1376,4 +1571,7 @@ function loop(ts){
 }
 loadAssets().then(()=>document.fonts.ready.then(()=>requestAnimationFrame(loop)));
 requestAnimationFrame(loop);
+window.addEventListener('beforeunload',()=>{
+  if(onlineChannel){onlineChannel.send({type:'broadcast',event:'leave',payload:{}});cleanupOnline()}
+});
 </script>
